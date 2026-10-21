@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeMargin — AI Code Explainer & Study Companion</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.0/mermaid.min.js"></script>
+<style>
+  :root{
+    --bg:#12161c;
+    --panel:#1b2028;
+    --panel-2:#20262f;
+    --line:#2a3038;
+    --ink:#dbe2ea;
+    --ink-dim:#8b95a3;
+    --amber:#e8a33d;
+    --mint:#6fcf97;
+    --red:#e2675a;
+    --mono: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);}
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+  .app{display:grid;grid-template-columns:240px 1fr;min-height:100vh;}
+  @media (max-width:860px){ .app{grid-template-columns:1fr;} .nav{position:sticky;top:0;z-index:10;} }
+
+  .nav{background:var(--panel);border-right:1px solid var(--line);padding:20px 14px;}
+  @media (max-width:860px){ .nav{border-right:none;border-bottom:1px solid var(--line);} }
+  .brand{font-family:var(--mono);font-weight:600;font-size:15px;color:var(--amber);margin-bottom:2px;}
+  .brand-sub{font-size:11px;color:var(--ink-dim);margin-bottom:20px;}
+  .steps{display:flex;flex-direction:column;gap:2px;}
+  @media (max-width:860px){ .steps{flex-direction:row;overflow-x:auto;gap:6px;padding-bottom:4px;} }
+  .step{display:flex;align-items:center;gap:10px;padding:10px 10px;border-radius:8px;cursor:pointer;color:var(--ink-dim);font-size:13.5px;white-space:nowrap;border:1px solid transparent;}
+  .step:hover{background:var(--panel-2);}
+  .step.active{background:var(--panel-2);color:var(--ink);border-color:var(--line);}
+  .step .num{font-family:var(--mono);font-size:11px;color:var(--amber);width:18px;flex-shrink:0;}
+  .step.active .num{color:var(--amber);}
+
+  .main{padding:26px 32px;max-width:980px;}
+  @media (max-width:860px){ .main{padding:18px;} }
+  h1{font-size:20px;margin:0 0 4px;}
+  .lede{color:var(--ink-dim);font-size:13.5px;margin:0 0 20px;line-height:1.5;}
+
+  textarea, select, input[type=text]{
+    width:100%;background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    color:var(--ink);font-family:var(--mono);font-size:13px;padding:12px;resize:vertical;
+  }
+  textarea:focus, select:focus, input:focus{outline:none;border-color:var(--amber);}
+  textarea{min-height:180px;line-height:1.5;}
+  label{display:block;font-size:12px;color:var(--ink-dim);margin-bottom:6px;font-weight:500;}
+  .row{display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap;}
+  .row > div{flex:1;min-width:160px;}
+
+  .btn{
+    background:var(--amber);color:#1a1408;border:none;border-radius:8px;padding:10px 18px;
+    font-family:var(--sans);font-weight:600;font-size:13.5px;cursor:pointer;
+  }
+  .btn:hover{filter:brightness(1.08);}
+  .btn:disabled{opacity:0.5;cursor:not-allowed;}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:14px;}
+  .pill{display:inline-block;font-family:var(--mono);font-size:11px;padding:3px 8px;border-radius:20px;border:1px solid var(--line);color:var(--ink-dim);margin-right:6px;}
+  .pill.beg{border-color:#3a5;color:var(--mint);}
+  .pill.int{border-color:var(--amber);color:var(--amber);}
+  .pill.adv{border-color:var(--red);color:var(--red);}
+
+  .tabs{display:flex;gap:8px;margin-bottom:14px;}
+  .tab{padding:7px 14px;border-radius:7px;font-size:13px;cursor:pointer;border:1px solid var(--line);color:var(--ink-dim);}
+  .tab.active{background:var(--panel-2);color:var(--amber);border-color:var(--amber);}
+
+  .margin-note{border-left:2px solid var(--amber);padding:8px 12px;margin:8px 0;background:var(--panel-2);border-radius:0 6px 6px 0;font-size:13px;color:var(--ink-dim);}
+  .margin-note b{color:var(--ink);}
+
+  pre.output{white-space:pre-wrap;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--ink);margin:0;}
+  .loading{color:var(--ink-dim);font-size:13px;font-style:italic;}
+  .error{color:var(--red);font-size:13px;}
+
+  .issue{border-left:3px solid var(--red);padding:8px 12px;margin-bottom:8px;background:var(--panel-2);border-radius:0 6px 6px 0;}
+  .issue.warn{border-color:var(--amber);}
+  .issue.info{border-color:var(--mint);}
+  .issue .sev{font-family:var(--mono);font-size:10px;text-transform:uppercase;color:var(--ink-dim);}
+
+  .quiz-q{margin-bottom:16px;}
+  .opt{display:block;width:100%;text-align:left;padding:10px 12px;margin:6px 0;border-radius:7px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink);cursor:pointer;font-size:13.5px;}
+  .opt.correct{border-color:var(--mint);background:rgba(111,207,151,0.1);}
+  .opt.wrong{border-color:var(--red);background:rgba(226,103,90,0.1);}
+  .opt:disabled{cursor:default;}
+
+  .mermaid{background:var(--panel-2);border-radius:10px;padding:16px;}
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="nav">
+    <div class="brand">CodeMargin</div>
+    <div class="brand-sub">AI code explainer &amp; study companion</div>
+    <div class="steps" id="steps"></div>
+  </div>
+  <div class="main" id="main"></div>
+</div>
+
+<script>
+mermaid.initialize({ startOnLoad:false, theme:'dark' });
+
+const STEPS = [
+  {id:'input', label:'Paste & run code'},
+  {id:'quality', label:'Bug finder'},
+  {id:'explain', label:'Explain'},
+  {id:'flowchart', label:'Flowchart'},
+  {id:'quiz', label:'Quiz & viva'},
+  {id:'notes', label:'Notes (GeeksforGeeks)'},
+  {id:'security', label:'Security check'},
+  {id:'github', label:'GitHub & deployment'},
+];
+
+let state = {
+  active: 'input',
+  code: '',
+  language: 'python',
+  explainText: null,
+  quality: null,
+  flowchartMermaid: null,
+  quiz: null,
+  quizAnswers: {},
+  quizSubmitted: false,
+  compilerOutput: null,
+  compilerRunning: false,
+  notesTopic: '',
+  notesOutput: null,
+};
+
+function render(){
+  renderNav();
+  renderMain();
+}
+
+function renderNav(){
+  const el = document.getElementById('steps');
+  el.innerHTML = STEPS.map((s,i)=>`
+    <div class="step ${state.active===s.id?'active':''}" onclick="setActive('${s.id}')">
+      <span class="num">${String(i+1).padStart(2,'0')}</span>${s.label}
+    </div>`).join('');
+}
+
+function setActive(id){ state.active = id; render(); if(id==='flowchart') setTimeout(renderFlowchart,50); }
+
+async function callClaude(prompt, opts={}){
+  const body = {
+    model: "claude-sonnet-4-6",
+    max_tokens: opts.maxTokens || 1500,
+    messages: [{ role:"user", content: prompt }]
+  };
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if(!res.ok){
+    const message = data && data.error && data.error.message ? data.error.message : `Request failed (HTTP ${res.status})`;
+    throw new Error(message);
+  }
+  const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n');
+  if(!text) throw new Error('The AI service returned an empty response.');
+  return text;
+}
+
+function cleanJson(text){
+  let t = text.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+  return JSON.parse(t);
+}
+
+// ---------- MAIN RENDER ----------
+function renderMain(){
+  const m = document.getElementById('main');
+  if(state.active==='input') return renderInput(m);
+  if(state.active==='explain') return renderExplain(m);
+  if(state.active==='quality') return renderQuality(m);
+  if(state.active==='flowchart') return renderFlowchartPage(m);
+  if(state.active==='quiz') return renderQuiz(m);
+  if(state.active==='notes') return renderNotes(m);
+  if(state.active==='security') return renderSecurity(m);
+  if(state.active==='github') return renderGitHub(m);
+}
+
+const RUNNABLE_LANGS = ['javascript','python','java','c','cpp','sql'];
+function renderInput(m){
+  m.innerHTML = `
+    <h1>Paste & run your code</h1>
+    <p class="lede">This code is shared across every tool on the left — paste once, then check it for bugs, explain it, chart it, run a security scan, or quiz yourself on it. You can also run it right here.</p>
+    <div class="row">
+      <div>
+        <label>Language</label>
+        <select id="langSel">
+          ${['python','java','c','cpp','javascript','sql'].map(l=>`<option value="${l}" ${state.language===l?'selected':''}>${l}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <label>Code</label>
+    <textarea id="codeArea" placeholder="Paste a function, class, or full file...">${escapeHtml(state.code)}</textarea>
+    <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      <button class="btn" onclick="saveCode()">Save & continue →</button>
+      <button class="btn ghost" id="runBtn" onclick="runCompiler()" ${state.compilerRunning?'disabled':''}>${state.compilerRunning?'Running...':'▶ Run code'}</button>
+      <span class="pill ${state.language==='javascript'?'beg':'adv'}">${state.language==='javascript'?'live execution':'AI-simulated run'}</span>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <b style="font-size:12px;color:var(--ink-dim);">OUTPUT</b>
+      <pre class="output" id="compilerOut" style="margin-top:8px;">${state.compilerOutput ? escapeHtml(state.compilerOutput) : 'Nothing run yet.'}</pre>
+    </div>
+  `;
+  document.getElementById('langSel').onchange = e=>{ state.language = e.target.value; render(); };
+}
+function saveCode(){
+  state.code = document.getElementById('codeArea').value;
+  state.explainText = null;
+  state.quality = null; state.flowchartMermaid=null; state.quiz=null;
+  if(!state.code.trim()){ alert('Paste some code first.'); return; }
+  setActive('explain');
+}
+async function runCompiler(){
+  state.code = document.getElementById('codeArea').value;
+  if(!state.code.trim()){ alert('Paste some code first.'); return; }
+  state.compilerRunning = true;
+  const outEl = document.getElementById('compilerOut');
+  outEl.textContent = 'Running...';
+  document.getElementById('runBtn').disabled = true;
+  document.getElementById('runBtn').textContent = 'Running...';
+
+  if(state.language === 'javascript'){
+    const logs = [];
+    const fakeConsole = { log:(...a)=>logs.push(a.map(x=> typeof x==='object'? JSON.stringify(x): String(x)).join(' ')),
+                           error:(...a)=>logs.push('Error: '+a.join(' ')),
+                           warn:(...a)=>logs.push('Warn: '+a.join(' ')) };
+    try{
+      const fn = new Function('console', state.code);
+      fn(fakeConsole);
+      state.compilerOutput = logs.length ? logs.join('\n') : '(no console output produced)';
+    }catch(e){
+      state.compilerOutput = 'Runtime error: ' + e.message;
+    }
+    state.compilerRunning = false;
+    render();
+    return;
+  }
+
+  const prompt = `Act as a ${state.language} compiler and runtime. Given the code below, output EXACTLY what would print to stdout when it is compiled and run — nothing else, no explanation, no markdown fences. If it would fail to compile or crash, output the compiler/runtime error message instead, as it would actually appear.\n\nCode:\n\`\`\`${state.language}\n${state.code}\n\`\`\``;
+  try{
+    const text = await callClaude(prompt, {maxTokens:800});
+    state.compilerOutput = text.trim();
+  }catch(e){
+    state.compilerOutput = 'Simulation failed — try again.';
+  }
+  state.compilerRunning = false;
+  render();
+}
+
+function renderExplain(m){
+  m.innerHTML = `
+    <h1>Explain this code</h1>
+    <p class="lede">A plain-language walkthrough — short sentences, no jargon, written so anyone can follow it.</p>
+    <div class="card">
+      <span class="pill">${state.language}</span>
+      <div id="explainOut" style="margin-top:12px;">${state.explainText ? mdToHtml(state.explainText) : '<span class="loading">Not generated yet — click Explain.</span>'}</div>
+    </div>
+    <button class="btn" onclick="doExplain()">Explain this code</button>
+  `;
+}
+async function doExplain(){
+  const out = document.getElementById('explainOut');
+  out.innerHTML = '<span class="loading">Thinking through the code...</span>';
+  const prompt = `Explain this ${state.language} code in simple, easy-to-understand language — as if explaining it to someone new to programming. Go through what it does step by step, avoid jargon, use short sentences and short paragraphs. Keep it clear and friendly, not technical.\n\nCode:\n\`\`\`${state.language}\n${state.code}\n\`\`\`\n\nFormat with short headings and bullet points where useful.`;
+  try{
+    const text = await callClaude(prompt, {maxTokens:1200});
+    state.explainText = text;
+    out.innerHTML = mdToHtml(text);
+  }catch(e){
+    out.innerHTML = '<span class="error">Something went wrong generating the explanation.</span>';
+  }
+}
+
+function renderQuality(m){
+  m.innerHTML = `
+    <h1>Bug finder</h1>
+    <p class="lede">Finds actual bugs in the code — logic errors, unhandled cases, things that will break at runtime — each tagged by severity. Not a style checker.</p>
+    <div class="card" id="qualityOut">${state.quality ? renderIssues(state.quality) : '<span class="loading">Not scanned yet.</span>'}</div>
+    <button class="btn" onclick="doQuality()">Find bugs</button>
+  `;
+}
+function renderIssues(issues){
+  if(!issues.length) return '<div class="issue info"><span class="sev">clean</span><div>No bugs found.</div></div>';
+  return issues.map(i=>`
+    <div class="issue ${i.severity==='high'?'':i.severity==='medium'?'warn':'info'}">
+      <span class="sev">${i.severity} · line ${i.line||'—'}</span>
+      <div><b>${escapeHtml(i.title)}</b></div>
+      <div style="color:var(--ink-dim);font-size:13px;margin-top:2px;">${escapeHtml(i.suggestion)}</div>
+    </div>`).join('');
+}
+async function doQuality(){
+  const out = document.getElementById('qualityOut');
+  out.innerHTML = '<span class="loading">Scanning for bugs...</span>';
+  const prompt = `Find actual bugs in this ${state.language} code — things that will cause incorrect behavior, crashes, or unhandled edge cases at runtime. Do NOT report style, formatting, or naming preferences — bugs only. Respond ONLY with a JSON array (no markdown fences, no preamble), each item shaped like:\n{"severity":"high|medium|low","line":<number or null>,"title":"short bug name","suggestion":"one sentence fix"}\n\nCode:\n\`\`\`${state.language}\n${state.code}\n\`\`\``;
+  try{
+    const text = await callClaude(prompt, {maxTokens:1200});
+    const issues = cleanJson(text);
+    state.quality = issues;
+    out.innerHTML = renderIssues(issues);
+  }catch(e){ out.innerHTML = '<span class="error">Scan failed — try again.</span>'; }
+}
+
+function renderFlowchartPage(m){
+  m.innerHTML = `
+    <h1>Flowchart & algorithm generator</h1>
+    <p class="lede">Turns control flow into a diagram — useful for viva prep when you need to explain logic on a whiteboard.</p>
+    <div class="card">
+      <div class="mermaid" id="mermaidOut">${state.flowchartMermaid ? '' : ''}</div>
+      ${!state.flowchartMermaid ? '<span class="loading">Not generated yet.</span>' : ''}
+    </div>
+    <button class="btn" onclick="doFlowchart()">Generate flowchart</button>
+  `;
+  if(state.flowchartMermaid) setTimeout(renderFlowchart, 30);
+}
+async function doFlowchart(){
+  const card = document.querySelector('#main .card');
+  card.innerHTML = '<span class="loading">Mapping the control flow...</span>';
+  const prompt = `Convert this ${state.language} code's control flow into a Mermaid.js flowchart. Respond ONLY with valid Mermaid syntax starting with "flowchart TD", no markdown fences, no explanation.\n\nCode:\n\`\`\`${state.language}\n${state.code}\n\`\`\``;
+  try{
+    let text = await callClaude(prompt, {maxTokens:1000});
+    text = text.trim().replace(/^```mermaid/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+    state.flowchartMermaid = text;
+    card.innerHTML = `<div class="mermaid" id="mermaidOut">${text}</div>`;
+    renderFlowchart();
+  }catch(e){ card.innerHTML = '<span class="error">Flowchart generation failed.</span>'; }
+}
+function renderFlowchart(){
+  const el = document.getElementById('mermaidOut');
+  if(!el || !state.flowchartMermaid) return;
+  try{
+    mermaid.render('mermaidSvg'+Date.now(), state.flowchartMermaid).then(r=>{ el.innerHTML = r.svg; });
+  }catch(e){}
+}
+
+function renderQuiz(m){
+  if(!state.quiz){
+    m.innerHTML = `
+      <h1>Quiz & viva generator</h1>
+      <p class="lede">Generates MCQs plus open-ended viva questions a professor might actually ask about this code.</p>
+      <button class="btn" onclick="doQuiz()">Generate quiz</button>
+      <div id="quizLoading"></div>
+    `;
+    return;
+  }
+  const mcqs = state.quiz.mcqs || [];
+  const viva = state.quiz.viva_questions || [];
+  m.innerHTML = `
+    <h1>Quiz & viva generator</h1>
+    <p class="lede">Answer the MCQs, then review the viva questions — the kind of thing your teacher would ask in person.</p>
+    <div class="card">
+      <b>Multiple choice</b>
+      ${mcqs.map((q,qi)=>`
+        <div class="quiz-q">
+          <div style="margin-bottom:6px;">${qi+1}. ${escapeHtml(q.question)}</div>
+          ${q.options.map((opt,oi)=>`<button class="opt" id="opt-${qi}-${oi}" onclick="answerQuiz(${qi},${oi})" ${state.quizSubmitted?'disabled':''}>${escapeHtml(opt)}</button>`).join('')}
+        </div>`).join('')}
+      ${!state.quizSubmitted ? `<button class="btn" onclick="submitQuiz()">Submit answers</button>` : `<div class="pill" style="margin-top:8px;">Score: ${quizScore()}/${mcqs.length}</div>`}
+    </div>
+    <div class="card">
+      <b>Viva questions to think through</b>
+      ${viva.map((v,i)=>`<div class="margin-note"><b>Q${i+1}.</b> ${escapeHtml(v)}</div>`).join('')}
+    </div>
+    <button class="btn ghost" onclick="state.quiz=null; state.quizAnswers={}; state.quizSubmitted=false; render();">Generate a new quiz</button>
+  `;
+  // re-apply visual state for already-answered options
+  Object.entries(state.quizAnswers).forEach(([qi,oi])=>{
+    const btn = document.getElementById(`opt-${qi}-${oi}`);
+    if(btn && !state.quizSubmitted) btn.style.borderColor='var(--amber)';
+  });
+  if(state.quizSubmitted){
+    mcqs.forEach((q,qi)=>{
+      q.options.forEach((opt,oi)=>{
+        const btn = document.getElementById(`opt-${qi}-${oi}`);
+        if(!btn) return;
+        if(oi===q.correct_index) btn.classList.add('correct');
+        else if(state.quizAnswers[qi]===oi) btn.classList.add('wrong');
+      });
+    });
+  }
+}
+function answerQuiz(qi,oi){ state.quizAnswers[qi]=oi; render(); }
+function quizScore(){
+  const mcqs = state.quiz.mcqs || [];
+  let score=0;
+  mcqs.forEach((q,qi)=>{ if(state.quizAnswers[qi]===q.correct_index) score++; });
+  return score;
+}
+function submitQuiz(){
+  state.quizSubmitted = true;
+  render();
+}
+async function doQuiz(){
+  document.getElementById('quizLoading').innerHTML = '<p class="loading">Writing questions...</p>';
+  const prompt = `Based on this ${state.language} code, generate a study quiz. Respond ONLY with JSON (no markdown fences) in this exact shape:\n{"mcqs":[{"question":"...","options":["a","b","c","d"],"correct_index":0}],"viva_questions":["...","..."]}\nGenerate 4 MCQs testing understanding of this specific code's logic, and 4 open-ended viva-style questions a professor might ask about design choices, edge cases, and complexity.\n\nCode:\n\`\`\`${state.language}\n${state.code}\n\`\`\``;
+  try{
+    const text = await callClaude(prompt, {maxTokens:1500});
+    state.quiz = cleanJson(text);
+    state.quizAnswers = {}; state.quizSubmitted = false;
+    render();
+  }catch(e){ document.getElementById('quizLoading').innerHTML = '<span class="error">Quiz generation failed — try again.</span>'; }
+}
+
+// ---------- Notes (GeeksforGeeks) ----------
+function renderNotes(m){
+  m.innerHTML = `
+    <h1>Notes</h1>
+    <p class="lede">Type a CS topic — the notes are generated strictly from GeeksforGeeks (geeksforgeeks.org), paraphrased and cited, not copied.</p>
+    <label>Topic</label>
+    <input type="text" id="notesTopicInput" placeholder="e.g. binary search tree, time complexity, linked list" value="${escapeHtml(state.notesTopic)}">
+    <div style="margin-top:12px;">
+      <button class="btn" onclick="doNotes()">Get notes</button>
+    </div>
+    <div class="card" style="margin-top:16px;" id="notesOut">${state.notesOutput ? mdToHtml(state.notesOutput) : '<span class="loading">Nothing fetched yet.</span>'}</div>
+  `;
+}
+async function doNotes(){
+  state.notesTopic = document.getElementById('notesTopicInput').value.trim();
+  if(!state.notesTopic){ alert('Type a topic first.'); return; }
+  const out = document.getElementById('notesOut');
+  out.innerHTML = '<span class="loading">Searching GeeksforGeeks...</span>';
+  const prompt = `Search the web using queries restricted to site:geeksforgeeks.org for the topic: "${state.notesTopic}". Only use information found on geeksforgeeks.org — ignore results from any other site. Write clear study notes in your own words (paraphrase, do not copy sentences directly; any direct quote must be under 10 words and used at most once). Structure with short headings and bullet points. End with a line: "Source: GeeksforGeeks (geeksforgeeks.org)".`;
+  try{
+    const body = {
+      model: "claude-sonnet-4-6",
+      max_tokens: 1200,
+      messages: [{ role:"user", content: prompt }],
+      tools: [{ type:"web_search_20250305", name:"web_search" }]
+    };
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n');
+    state.notesOutput = text || 'No notes could be generated — try a more specific topic.';
+    out.innerHTML = mdToHtml(state.notesOutput);
+  }catch(e){
+    out.innerHTML = '<span class="error">Could not fetch notes — try again.</span>';
+  }
+}
+
+// ---------- Security validation ----------
+function renderSecurity(m){
+  m.innerHTML = `
+    <h1>Security check</h1>
+    <p class="lede">A quick local check for common risky patterns in the code you pasted. This is a basic screening tool, not a complete security audit.</p>
+    <div class="card">
+      <b>What this checks</b>
+      <div class="margin-note">Hard-coded secrets, unsafe dynamic code execution, SQL query construction, risky HTML insertion, and disabled TLS/certificate checks.</div>
+      <button class="btn" onclick="runSecurityCheck()">Scan code for risks</button>
+    </div>
+    <div class="card" id="securityOut"><span class="loading">Paste code on the first screen, then run the scan.</span></div>
+    <div class="card">
+      <b>Security recommendations</b>
+      <ul>
+        <li>Never put API keys, passwords, or tokens in frontend HTML/JavaScript.</li>
+        <li>Keep secret keys on a backend server and use environment variables.</li>
+        <li>Validate and sanitize user input; use parameterized SQL queries.</li>
+        <li>Use HTTPS, keep dependencies updated, and avoid running untrusted code.</li>
+        <li>Do not treat AI-generated findings as proof that code is secure.</li>
+      </ul>
+    </div>`;
+}
+function runSecurityCheck(){
+  const out = document.getElementById('securityOut');
+  if(!state.code.trim()){
+    out.innerHTML = '<div class="issue warn"><span class="sev">input required</span><div>Paste code on the first screen before scanning.</div></div>';
+    return;
+  }
+  const code = state.code;
+  const checks = [
+    {re:/(api[_-]?key|secret|password|passwd|token)\s*[:=]\s*['"][^'"\n]{6,}['"]/i, title:'Possible hard-coded secret', suggestion:'Remove the secret from source code, rotate it if real, and store it on a protected backend.'},
+    {re:/\beval\s*\(|new Function\s*\(/i, title:'Dynamic code execution', suggestion:'Avoid evaluating arbitrary strings as code; validate inputs and use safer alternatives.'},
+    {re:/innerHTML\s*=/i, title:'Potential unsafe HTML insertion', suggestion:'Use textContent for plain text, or sanitize trusted HTML before inserting it.'},
+    {re:/https?\.request|verify\s*=\s*False|rejectUnauthorized\s*:\s*false|NODE_TLS_REJECT_UNAUTHORIZED\s*=?\s*['"]?0/i, title:'Possible insecure network/TLS setting', suggestion:'Use HTTPS and keep certificate validation enabled.'},
+    {re:/SELECT\s+.+\s+FROM\s+.+\s*\+|INSERT\s+INTO\s+.+\s*\+/i, title:'Possible SQL string concatenation', suggestion:'Use parameterized queries instead of concatenating user-controlled values into SQL.'},
+    {re:/Access-Control-Allow-Origin['"]?\s*:\s*['"]\*['"]|cors\s*\(\s*\)/i, title:'Review broad CORS configuration', suggestion:'Restrict cross-origin access to trusted origins where possible.'}
+  ];
+  const found = checks.filter(c=>c.re.test(code));
+  if(!found.length){
+    out.innerHTML = '<div class="issue info"><span class="sev">no pattern detected</span><div>No matching risky patterns were found by this basic scan. This does not mean the code is secure.</div></div>';
+    return;
+  }
+  out.innerHTML = `<p><b>${found.length} potential risk(s) detected</b></p>` + found.map(f=>`<div class="issue warn"><span class="sev">review</span><div><b>${escapeHtml(f.title)}</b></div><div style="color:var(--ink-dim);font-size:13px;margin-top:4px;">${escapeHtml(f.suggestion)}</div></div>`).join('');
+}
+
+// ---------- GitHub and deployment guide ----------
+function renderGitHub(m){
+  m.innerHTML = `
+    <h1>GitHub & deployment</h1>
+    <p class="lede">A simple submission checklist for publishing this frontend from a mobile phone. This page is a guide; it does not upload files or deploy automatically.</p>
+    <div class="card">
+      <b>1. Save a clean project copy</b>
+      <p>Keep this file named <code>index.html</code>. Test it in your mobile browser before publishing.</p>
+    </div>
+    <div class="card">
+      <b>2. Upload to GitHub (mobile)</b>
+      <ol>
+        <li>Open <a href="https://github.com" target="_blank" rel="noopener noreferrer">GitHub</a> and sign in or create an account.</li>
+        <li>Create a new repository, for example <code>codemargin-project</code>.</li>
+        <li>Use <b>Add file → Upload files</b> and upload <code>index.html</code>.</li>
+        <li>Commit the file with a message such as <code>Initial frontend submission</code>.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <b>3. Optional: publish with GitHub Pages</b>
+      <ol>
+        <li>Open repository <b>Settings → Pages</b>.</li>
+        <li>Select deployment from the main branch and the root folder, then save.</li>
+        <li>Wait for the published URL shown by GitHub Pages, then open and test it.</li>
+      </ol>
+      <p><a href="https://docs.github.com/en/pages" target="_blank" rel="noopener noreferrer">Official GitHub Pages guide</a></p>
+    </div>
+    <div class="card">
+      <b>Important project limitations</b>
+      <ul>
+        <li>This project is currently a single-page frontend; it does not have a connected database or user authentication.</li>
+        <li>AI features call an external API directly from the browser. For a real deployment, move API calls to a backend and keep API credentials secret.</li>
+        <li>GitHub version control should include meaningful commits. Do not commit API keys, passwords, or private data.</li>
+        <li>Test on mobile after deployment, including navigation, empty input, invalid code, and network/API failure.</li>
+      </ul>
+    </div>`;
+}
+
+// ---------- utils ----------
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function mdToHtml(text){
+  // lightweight markdown: headings, bold, bullets, code fences
+  let t = escapeHtml(text);
+  t = t.replace(/```([\s\S]*?)```/g, (m,c)=>`<pre class="output">${c}</pre>`);
+  t = t.replace(/^### (.*)$/gm,'<b style="font-size:14px;">$1</b>')
+       .replace(/^## (.*)$/gm,'<div style="font-size:15px;font-weight:600;margin:10px 0 4px;">$1</div>')
+       .replace(/^# (.*)$/gm,'<div style="font-size:16px;font-weight:700;margin:10px 0 6px;">$1</div>')
+       .replace(/\*\*(.*?)\*\*/g,'<b>$1</b>')
+       .replace(/^- (.*)$/gm,'<div style="padding-left:14px;">• $1</div>')
+       .replace(/\n\n/g,'<br><br>').replace(/\n/g,'<br>');
+  return t;
+}
+
+render();
+</script>
+</body>
+</html>
