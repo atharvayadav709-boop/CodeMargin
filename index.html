@@ -114,8 +114,6 @@ const STEPS = [
   {id:'flowchart', label:'Flowchart'},
   {id:'quiz', label:'Quiz & viva'},
   {id:'notes', label:'Notes (GeeksforGeeks)'},
-  {id:'security', label:'Security check'},
-  {id:'github', label:'GitHub & deployment'},
 ];
 
 let state = {
@@ -149,25 +147,28 @@ function renderNav(){
 
 function setActive(id){ state.active = id; render(); if(id==='flowchart') setTimeout(renderFlowchart,50); }
 
-async function callClaude(prompt, opts={}){
-  const body = {
-    model: "claude-sonnet-4-6",
-    max_tokens: opts.maxTokens || 1500,
-    messages: [{ role:"user", content: prompt }]
-  };
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body: JSON.stringify(body)
+const GEMINI_BACKEND_URL = "https://codemargin-api.atharvayadav709.workers.dev/";
+
+async function callGemini(prompt, opts={}){
+  const res = await fetch(GEMINI_BACKEND_URL, {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({
+      prompt,
+      maxTokens: opts.maxTokens || 1500,
+      useSearch: opts.useSearch === true
+    })
   });
-  const data = await res.json();
-  if(!res.ok){
-    const message = data && data.error && data.error.message ? data.error.message : `Request failed (HTTP ${res.status})`;
-    throw new Error(message);
+
+  let data;
+  try { data = await res.json(); }
+  catch { throw new Error("The AI backend returned an invalid response."); }
+
+  if(!res.ok) throw new Error(data.error || `AI request failed (HTTP ${res.status})`);
+  if(typeof data.text !== "string" || !data.text.trim()) {
+    throw new Error("The AI service returned an empty response.");
   }
-  const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n');
-  if(!text) throw new Error('The AI service returned an empty response.');
-  return text;
+  return data.text;
 }
 
 function cleanJson(text){
@@ -184,15 +185,13 @@ function renderMain(){
   if(state.active==='flowchart') return renderFlowchartPage(m);
   if(state.active==='quiz') return renderQuiz(m);
   if(state.active==='notes') return renderNotes(m);
-  if(state.active==='security') return renderSecurity(m);
-  if(state.active==='github') return renderGitHub(m);
 }
 
 const RUNNABLE_LANGS = ['javascript','python','java','c','cpp','sql'];
 function renderInput(m){
   m.innerHTML = `
     <h1>Paste & run your code</h1>
-    <p class="lede">This code is shared across every tool on the left — paste once, then check it for bugs, explain it, chart it, run a security scan, or quiz yourself on it. You can also run it right here.</p>
+    <p class="lede">This code is shared across every tool on the left — paste once, then check it for bugs, explain it, create a flowchart, or quiz yourself on it. You can also run it right here.</p>
     <div class="row">
       <div>
         <label>Language</label>
@@ -250,7 +249,7 @@ async function runCompiler(){
 
   const prompt = `Act as a ${state.language} compiler and runtime. Given the code below, output EXACTLY what would print to stdout when it is compiled and run — nothing else, no explanation, no markdown fences. If it would fail to compile or crash, output the compiler/runtime error message instead, as it would actually appear.\n\nCode:\n\`\`\`${state.language}\n${state.code}\n\`\`\``;
   try{
-    const text = await callClaude(prompt, {maxTokens:800});
+    const text = await callGemini(prompt, {maxTokens:800});
     state.compilerOutput = text.trim();
   }catch(e){
     state.compilerOutput = 'Simulation failed — try again.';
@@ -275,7 +274,7 @@ async function doExplain(){
   out.innerHTML = '<span class="loading">Thinking through the code...</span>';
   const prompt = `Explain this ${state.language} code in simple, easy-to-understand language — as if explaining it to someone new to programming. Go through what it does step by step, avoid jargon, use short sentences and short paragraphs. Keep it clear and friendly, not technical.\n\nCode:\n\`\`\`${state.language}\n${state.code}\n\`\`\`\n\nFormat with short headings and bullet points where useful.`;
   try{
-    const text = await callClaude(prompt, {maxTokens:1200});
+    const text = await callGemini(prompt, {maxTokens:1200});
     state.explainText = text;
     out.innerHTML = mdToHtml(text);
   }catch(e){
@@ -305,7 +304,7 @@ async function doQuality(){
   out.innerHTML = '<span class="loading">Scanning for bugs...</span>';
   const prompt = `Find actual bugs in this ${state.language} code — things that will cause incorrect behavior, crashes, or unhandled edge cases at runtime. Do NOT report style, formatting, or naming preferences — bugs only. Respond ONLY with a JSON array (no markdown fences, no preamble), each item shaped like:\n{"severity":"high|medium|low","line":<number or null>,"title":"short bug name","suggestion":"one sentence fix"}\n\nCode:\n\`\`\`${state.language}\n${state.code}\n\`\`\``;
   try{
-    const text = await callClaude(prompt, {maxTokens:1200});
+    const text = await callGemini(prompt, {maxTokens:1200});
     const issues = cleanJson(text);
     state.quality = issues;
     out.innerHTML = renderIssues(issues);
@@ -329,7 +328,7 @@ async function doFlowchart(){
   card.innerHTML = '<span class="loading">Mapping the control flow...</span>';
   const prompt = `Convert this ${state.language} code's control flow into a Mermaid.js flowchart. Respond ONLY with valid Mermaid syntax starting with "flowchart TD", no markdown fences, no explanation.\n\nCode:\n\`\`\`${state.language}\n${state.code}\n\`\`\``;
   try{
-    let text = await callClaude(prompt, {maxTokens:1000});
+    let text = await callGemini(prompt, {maxTokens:1000});
     text = text.trim().replace(/^```mermaid/i,'').replace(/^```/,'').replace(/```$/,'').trim();
     state.flowchartMermaid = text;
     card.innerHTML = `<div class="mermaid" id="mermaidOut">${text}</div>`;
@@ -405,7 +404,7 @@ async function doQuiz(){
   document.getElementById('quizLoading').innerHTML = '<p class="loading">Writing questions...</p>';
   const prompt = `Based on this ${state.language} code, generate a study quiz. Respond ONLY with JSON (no markdown fences) in this exact shape:\n{"mcqs":[{"question":"...","options":["a","b","c","d"],"correct_index":0}],"viva_questions":["...","..."]}\nGenerate 4 MCQs testing understanding of this specific code's logic, and 4 open-ended viva-style questions a professor might ask about design choices, edge cases, and complexity.\n\nCode:\n\`\`\`${state.language}\n${state.code}\n\`\`\``;
   try{
-    const text = await callClaude(prompt, {maxTokens:1500});
+    const text = await callGemini(prompt, {maxTokens:1500});
     state.quiz = cleanJson(text);
     state.quizAnswers = {}; state.quizSubmitted = false;
     render();
@@ -430,107 +429,14 @@ async function doNotes(){
   if(!state.notesTopic){ alert('Type a topic first.'); return; }
   const out = document.getElementById('notesOut');
   out.innerHTML = '<span class="loading">Searching GeeksforGeeks...</span>';
-  const prompt = `Search the web using queries restricted to site:geeksforgeeks.org for the topic: "${state.notesTopic}". Only use information found on geeksforgeeks.org — ignore results from any other site. Write clear study notes in your own words (paraphrase, do not copy sentences directly; any direct quote must be under 10 words and used at most once). Structure with short headings and bullet points. End with a line: "Source: GeeksforGeeks (geeksforgeeks.org)".`;
+  const prompt = `Use web search to find information for the topic: "${state.notesTopic}". Prefer and restrict research to pages on geeksforgeeks.org; do not rely on other websites. If you cannot verify information on GeeksforGeeks, say so instead of inventing a source. Write clear study notes in your own words (paraphrase, do not copy sentences directly). Structure with short headings and bullet points. End with a "Sources" section listing the relevant GeeksforGeeks page titles and URLs actually found.`;
   try{
-    const body = {
-      model: "claude-sonnet-4-6",
-      max_tokens: 1200,
-      messages: [{ role:"user", content: prompt }],
-      tools: [{ type:"web_search_20250305", name:"web_search" }]
-    };
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)
-    });
-    const data = await res.json();
-    const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n');
+    const text = await callGemini(prompt, {maxTokens:1200, useSearch:true});
     state.notesOutput = text || 'No notes could be generated — try a more specific topic.';
     out.innerHTML = mdToHtml(state.notesOutput);
   }catch(e){
-    out.innerHTML = '<span class="error">Could not fetch notes — try again.</span>';
+    out.innerHTML = '<span class="error">Could not fetch notes — try again. ' + escapeHtml(e.message) + '</span>';
   }
-}
-
-// ---------- Security validation ----------
-function renderSecurity(m){
-  m.innerHTML = `
-    <h1>Security check</h1>
-    <p class="lede">A quick local check for common risky patterns in the code you pasted. This is a basic screening tool, not a complete security audit.</p>
-    <div class="card">
-      <b>What this checks</b>
-      <div class="margin-note">Hard-coded secrets, unsafe dynamic code execution, SQL query construction, risky HTML insertion, and disabled TLS/certificate checks.</div>
-      <button class="btn" onclick="runSecurityCheck()">Scan code for risks</button>
-    </div>
-    <div class="card" id="securityOut"><span class="loading">Paste code on the first screen, then run the scan.</span></div>
-    <div class="card">
-      <b>Security recommendations</b>
-      <ul>
-        <li>Never put API keys, passwords, or tokens in frontend HTML/JavaScript.</li>
-        <li>Keep secret keys on a backend server and use environment variables.</li>
-        <li>Validate and sanitize user input; use parameterized SQL queries.</li>
-        <li>Use HTTPS, keep dependencies updated, and avoid running untrusted code.</li>
-        <li>Do not treat AI-generated findings as proof that code is secure.</li>
-      </ul>
-    </div>`;
-}
-function runSecurityCheck(){
-  const out = document.getElementById('securityOut');
-  if(!state.code.trim()){
-    out.innerHTML = '<div class="issue warn"><span class="sev">input required</span><div>Paste code on the first screen before scanning.</div></div>';
-    return;
-  }
-  const code = state.code;
-  const checks = [
-    {re:/(api[_-]?key|secret|password|passwd|token)\s*[:=]\s*['"][^'"\n]{6,}['"]/i, title:'Possible hard-coded secret', suggestion:'Remove the secret from source code, rotate it if real, and store it on a protected backend.'},
-    {re:/\beval\s*\(|new Function\s*\(/i, title:'Dynamic code execution', suggestion:'Avoid evaluating arbitrary strings as code; validate inputs and use safer alternatives.'},
-    {re:/innerHTML\s*=/i, title:'Potential unsafe HTML insertion', suggestion:'Use textContent for plain text, or sanitize trusted HTML before inserting it.'},
-    {re:/https?\.request|verify\s*=\s*False|rejectUnauthorized\s*:\s*false|NODE_TLS_REJECT_UNAUTHORIZED\s*=?\s*['"]?0/i, title:'Possible insecure network/TLS setting', suggestion:'Use HTTPS and keep certificate validation enabled.'},
-    {re:/SELECT\s+.+\s+FROM\s+.+\s*\+|INSERT\s+INTO\s+.+\s*\+/i, title:'Possible SQL string concatenation', suggestion:'Use parameterized queries instead of concatenating user-controlled values into SQL.'},
-    {re:/Access-Control-Allow-Origin['"]?\s*:\s*['"]\*['"]|cors\s*\(\s*\)/i, title:'Review broad CORS configuration', suggestion:'Restrict cross-origin access to trusted origins where possible.'}
-  ];
-  const found = checks.filter(c=>c.re.test(code));
-  if(!found.length){
-    out.innerHTML = '<div class="issue info"><span class="sev">no pattern detected</span><div>No matching risky patterns were found by this basic scan. This does not mean the code is secure.</div></div>';
-    return;
-  }
-  out.innerHTML = `<p><b>${found.length} potential risk(s) detected</b></p>` + found.map(f=>`<div class="issue warn"><span class="sev">review</span><div><b>${escapeHtml(f.title)}</b></div><div style="color:var(--ink-dim);font-size:13px;margin-top:4px;">${escapeHtml(f.suggestion)}</div></div>`).join('');
-}
-
-// ---------- GitHub and deployment guide ----------
-function renderGitHub(m){
-  m.innerHTML = `
-    <h1>GitHub & deployment</h1>
-    <p class="lede">A simple submission checklist for publishing this frontend from a mobile phone. This page is a guide; it does not upload files or deploy automatically.</p>
-    <div class="card">
-      <b>1. Save a clean project copy</b>
-      <p>Keep this file named <code>index.html</code>. Test it in your mobile browser before publishing.</p>
-    </div>
-    <div class="card">
-      <b>2. Upload to GitHub (mobile)</b>
-      <ol>
-        <li>Open <a href="https://github.com" target="_blank" rel="noopener noreferrer">GitHub</a> and sign in or create an account.</li>
-        <li>Create a new repository, for example <code>codemargin-project</code>.</li>
-        <li>Use <b>Add file → Upload files</b> and upload <code>index.html</code>.</li>
-        <li>Commit the file with a message such as <code>Initial frontend submission</code>.</li>
-      </ol>
-    </div>
-    <div class="card">
-      <b>3. Optional: publish with GitHub Pages</b>
-      <ol>
-        <li>Open repository <b>Settings → Pages</b>.</li>
-        <li>Select deployment from the main branch and the root folder, then save.</li>
-        <li>Wait for the published URL shown by GitHub Pages, then open and test it.</li>
-      </ol>
-      <p><a href="https://docs.github.com/en/pages" target="_blank" rel="noopener noreferrer">Official GitHub Pages guide</a></p>
-    </div>
-    <div class="card">
-      <b>Important project limitations</b>
-      <ul>
-        <li>This project is currently a single-page frontend; it does not have a connected database or user authentication.</li>
-        <li>AI features call an external API directly from the browser. For a real deployment, move API calls to a backend and keep API credentials secret.</li>
-        <li>GitHub version control should include meaningful commits. Do not commit API keys, passwords, or private data.</li>
-        <li>Test on mobile after deployment, including navigation, empty input, invalid code, and network/API failure.</li>
-      </ul>
-    </div>`;
 }
 
 // ---------- utils ----------
